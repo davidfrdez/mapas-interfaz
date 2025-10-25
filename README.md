@@ -1,6 +1,6 @@
 # GeoBogotá
 
-Componente React + TypeScript que permite autocompletar direcciones dentro de Bogotá, ubicarlas en un mapa de Leaflet y copiar sus coordenadas.
+Componente React + TypeScript que permite autocompletar direcciones dentro de Bogotá y copiar sus coordenadas, sin dependencias de mapas embebidos.
 
 ## Requisitos previos
 
@@ -38,8 +38,7 @@ Si tienes configurada la variable `VITE_GOOGLE_KEY`, también puedes forzar el p
 
 - Autocompletado con debounce (350 ms) y cancelación de solicitudes mediante `AbortController`.
 - Restricción geográfica a Bogotá tanto en Nominatim como en Google Places.
-- Mapa interactivo con Leaflet (`react-leaflet`), marcador arrastrable y reverse geocoding automático.
-- Visualización y copia al portapapeles de coordenadas con 6 decimales.
+- Visualización de la dirección seleccionada y copia al portapapeles de coordenadas con 6 decimales.
 - Manejo de errores comunes (red, cuotas, sin resultados) con mensajes descriptivos.
 
 ## Uso responsable de Nominatim
@@ -64,4 +63,4 @@ Si tienes configurada la variable `VITE_GOOGLE_KEY`, también puedes forzar el p
 
 ## Licencias de datos
 
-Los mosaicos y datos de mapa provienen de OpenStreetMap. Atribución requerida: “Datos de mapas © OpenStreetMap”.
+La información de geocodificación proviene de OpenStreetMap/Nominatim. Atribución requerida: “Datos de geocodificación © OpenStreetMap”.

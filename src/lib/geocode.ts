@@ -293,12 +293,3 @@ function googleStatusMessage(status?: string): string {
   }
 }
 
-export const BOGOTA_CENTER = {
-  lat: 4.711,
-  lng: -74.0721,
-};
-
-export const BOGOTA_BOUNDS = {
-  southWest: { lat: 4.47, lng: -74.25 },
-  northEast: { lat: 4.9, lng: -73.99 },
-};

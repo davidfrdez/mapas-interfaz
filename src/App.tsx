@@ -7,15 +7,15 @@ const App: React.FC = () => {
       <header>
         <h1>GeoBogotá</h1>
         <p>
-          Busca direcciones dentro de Bogotá, visualízalas en el mapa y obtén con precisión las
-          coordenadas geográficas.
+          Busca direcciones dentro de Bogotá, revisa sugerencias en tiempo real y obtén con
+          precisión las coordenadas geográficas.
         </p>
       </header>
 
       <GeoBogota />
 
       <footer>
-        Construido con React, TypeScript, Leaflet y datos de geocodificación pública.
+        Construido con React, TypeScript y datos de geocodificación pública.
       </footer>
     </div>
   );

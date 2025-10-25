@@ -1,31 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  MapContainer,
-  Marker,
-  TileLayer,
-  useMap,
-  ZoomControl,
-} from 'react-leaflet';
-import L, { LeafletEventHandlerFnMap } from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-import markerIcon2xUrl from 'leaflet/dist/images/marker-icon-2x.png';
-import markerIconUrl from 'leaflet/dist/images/marker-icon.png';
-import markerShadowUrl from 'leaflet/dist/images/marker-shadow.png';
 import './GeoBogota.css';
-import {
-  BOGOTA_BOUNDS,
-  BOGOTA_CENTER,
-  GeocodeResult,
-  Provider,
-  reverseGeocode,
-  searchAddress,
-} from '../lib/geocode';
-
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2xUrl,
-  iconUrl: markerIconUrl,
-  shadowUrl: markerShadowUrl,
-});
+import { GeocodeResult, Provider, searchAddress } from '../lib/geocode';
 
 interface GeoBogotaProps {
   provider?: Provider;
@@ -37,23 +12,7 @@ interface StatusMessage {
   text: string;
 }
 
-const DEFAULT_ZOOM = 12;
-const FOCUSED_ZOOM = 16;
 const DEBOUNCE_MS = 350;
-
-function MapViewUpdater({ position }: { position: L.LatLngExpression | null }) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (position) {
-      map.flyTo(position, Math.max(map.getZoom(), FOCUSED_ZOOM), {
-        duration: 0.8,
-      });
-    }
-  }, [map, position]);
-
-  return null;
-}
 
 function formatCoordinate(value: number): string {
   return value.toFixed(6);
@@ -65,11 +24,9 @@ const GeoBogota: React.FC<GeoBogotaProps> = ({ provider, initialAddress }) => {
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [selectedResult, setSelectedResult] = useState<GeocodeResult | null>(null);
   const [status, setStatus] = useState<StatusMessage | null>(null);
-  const [markerPosition, setMarkerPosition] = useState<L.LatLngLiteral | null>(null);
   const [isSearching, setIsSearching] = useState(false);
 
   const searchAbortRef = useRef<AbortController | null>(null);
-  const reverseAbortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<number>();
   const mountedRef = useRef(false);
 
@@ -80,13 +37,59 @@ const GeoBogota: React.FC<GeoBogotaProps> = ({ provider, initialAddress }) => {
     return (import.meta.env.VITE_GOOGLE_KEY ? 'google' : 'nominatim') as Provider;
   }, [provider]);
 
+  const fetchSuggestions = useCallback(
+    async (value: string) => {
+      searchAbortRef.current?.abort();
+      if (!value.trim()) {
+        setSuggestions([]);
+        setStatus(null);
+        return;
+      }
+
+      const controller = new AbortController();
+      searchAbortRef.current = controller;
+      setIsLoadingSuggestions(true);
+
+      try {
+        const results = await searchAddress(value, {
+          provider: resolvedProvider,
+          signal: controller.signal,
+        });
+        if (!mountedRef.current) {
+          return;
+        }
+
+        setSuggestions(results);
+        if (!results.length) {
+          setStatus({ type: 'info', text: 'No se encontraron coincidencias.' });
+        } else {
+          setStatus(null);
+        }
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') {
+          return;
+        }
+        setStatus({
+          type: 'error',
+          text:
+            (error as Error).message ||
+            'Ocurrió un error al obtener sugerencias. Verifica tu conexión.',
+        });
+      } finally {
+        if (mountedRef.current) {
+          setIsLoadingSuggestions(false);
+        }
+      }
+    },
+    [resolvedProvider],
+  );
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       window.clearTimeout(debounceRef.current);
       searchAbortRef.current?.abort();
-      reverseAbortRef.current?.abort();
     };
   }, []);
 
@@ -108,54 +111,6 @@ const GeoBogota: React.FC<GeoBogotaProps> = ({ provider, initialAddress }) => {
       window.clearTimeout(debounceRef.current);
     };
   }, [fetchSuggestions, query]);
-
-  useEffect(() => {
-    if (selectedResult) {
-      setMarkerPosition({ lat: selectedResult.lat, lng: selectedResult.lng });
-    }
-  }, [selectedResult]);
-
-  const fetchSuggestions = useCallback(async (value: string) => {
-    searchAbortRef.current?.abort();
-    if (!value.trim()) {
-      setSuggestions([]);
-      setStatus(null);
-      return;
-    }
-
-    const controller = new AbortController();
-    searchAbortRef.current = controller;
-    setIsLoadingSuggestions(true);
-
-    try {
-      const results = await searchAddress(value, {
-        provider: resolvedProvider,
-        signal: controller.signal,
-      });
-      if (!mountedRef.current) return;
-
-      setSuggestions(results);
-      if (!results.length) {
-        setStatus({ type: 'info', text: 'No se encontraron coincidencias.' });
-      } else {
-        setStatus(null);
-      }
-    } catch (error) {
-      if ((error as Error).name === 'AbortError') {
-        return;
-      }
-      setStatus({
-        type: 'error',
-        text:
-          (error as Error).message ||
-          'Ocurrió un error al obtener sugerencias. Verifica tu conexión.',
-      });
-    } finally {
-      if (mountedRef.current) {
-        setIsLoadingSuggestions(false);
-      }
-    }
-  }, [resolvedProvider]);
 
   const handleSuggestionClick = (result: GeocodeResult) => {
     setSelectedResult(result);
@@ -182,13 +137,17 @@ const GeoBogota: React.FC<GeoBogotaProps> = ({ provider, initialAddress }) => {
         provider: resolvedProvider,
         signal: controller.signal,
       });
-      if (!mountedRef.current) return;
+      if (!mountedRef.current) {
+        return;
+      }
 
       if (!results.length) {
         setStatus({
           type: 'info',
           text: 'No se encontraron resultados para esa dirección en Bogotá.',
         });
+        setSelectedResult(null);
+        setSuggestions([]);
         return;
       }
       setSelectedResult(results[0]);
@@ -212,56 +171,11 @@ const GeoBogota: React.FC<GeoBogotaProps> = ({ provider, initialAddress }) => {
     }
   };
 
-  const handleMarkerDragEnd = useCallback(
-    async (event: L.LeafletEvent) => {
-      const target = event.target as L.Marker;
-      const position = target.getLatLng();
-      setMarkerPosition(position);
-
-      reverseAbortRef.current?.abort();
-      const controller = new AbortController();
-      reverseAbortRef.current = controller;
-
-      try {
-        const result = await reverseGeocode(position.lat, position.lng, {
-          provider: resolvedProvider,
-          signal: controller.signal,
-        });
-        if (!result || !mountedRef.current) {
-          return;
-        }
-        setSelectedResult(result);
-        setQuery(result.label);
-        setStatus({ type: 'info', text: 'Dirección actualizada según la posición del marcador.' });
-      } catch (error) {
-        if ((error as Error).name === 'AbortError') {
-          return;
-        }
-        setStatus({
-          type: 'error',
-          text:
-            (error as Error).message ||
-            'No se pudo obtener la dirección del punto seleccionado.',
-        });
-      }
-    },
-    [resolvedProvider],
-  );
-
-  const markerEventHandlers = useMemo<LeafletEventHandlerFnMap>(
-    () => ({
-      dragend: (event) => {
-        void handleMarkerDragEnd(event as unknown as L.LeafletEvent);
-      },
-    }),
-    [handleMarkerDragEnd],
-  );
-
   const handleCopy = async () => {
-    if (!markerPosition) {
+    if (!selectedResult) {
       return;
     }
-    const value = `${formatCoordinate(markerPosition.lat)},${formatCoordinate(markerPosition.lng)}`;
+    const value = `${formatCoordinate(selectedResult.lat)},${formatCoordinate(selectedResult.lng)}`;
     try {
       await navigator.clipboard.writeText(value);
       setStatus({ type: 'info', text: 'Coordenadas copiadas al portapapeles.' });
@@ -336,39 +250,15 @@ const GeoBogota: React.FC<GeoBogotaProps> = ({ provider, initialAddress }) => {
 
       {renderStatus()}
 
-      <div className="map-wrapper" role="region" aria-label="Mapa de Bogotá con marcador de ubicación">
-        <MapContainer
-          center={BOGOTA_CENTER}
-          zoom={DEFAULT_ZOOM}
-          scrollWheelZoom
-          style={{ height: '420px', width: '100%' }}
-          zoomControl={false}
-          bounds={L.latLngBounds(BOGOTA_BOUNDS.southWest, BOGOTA_BOUNDS.northEast)}
-          maxBounds={L.latLngBounds(BOGOTA_BOUNDS.southWest, BOGOTA_BOUNDS.northEast)}
-          maxBoundsViscosity={0.8}
-          minZoom={11}
-        >
-          <TileLayer
-            attribution="&copy; <a href='https://www.openstreetmap.org/'>OpenStreetMap</a> colaboradores"
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <ZoomControl position="topright" />
-          {markerPosition && (
-            <Marker position={markerPosition} draggable eventHandlers={markerEventHandlers} />
-          )}
-          <MapViewUpdater position={markerPosition ? [markerPosition.lat, markerPosition.lng] : null} />
-        </MapContainer>
-      </div>
-
-      <div className="result-panel">
+      <div className="result-panel" aria-live="polite">
         <h2>Resultados</h2>
-        {markerPosition ? (
+        {selectedResult ? (
           <div className="coordinates">
             <p>
-              <strong>Lat:</strong> {formatCoordinate(markerPosition.lat)}
+              <strong>Lat:</strong> {formatCoordinate(selectedResult.lat)}
             </p>
             <p>
-              <strong>Lng:</strong> {formatCoordinate(markerPosition.lng)}
+              <strong>Lng:</strong> {formatCoordinate(selectedResult.lng)}
             </p>
             <button type="button" onClick={handleCopy} className="copy-button">
               Copiar
@@ -378,13 +268,13 @@ const GeoBogota: React.FC<GeoBogotaProps> = ({ provider, initialAddress }) => {
           <p>Selecciona una dirección para ver sus coordenadas.</p>
         )}
         {selectedResult && (
-          <p className="selected-address" aria-live="polite">
+          <p className="selected-address">
             <strong>Dirección:</strong> {selectedResult.label}
           </p>
         )}
       </div>
 
-      <p className="data-source">Datos de mapas © OpenStreetMap</p>
+      <p className="data-source">Datos de geocodificación © OpenStreetMap</p>
     </section>
   );
 };
